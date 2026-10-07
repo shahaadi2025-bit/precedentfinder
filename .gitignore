@@ -1,0 +1,23 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# node
+node_modules/
+.next/
+out/
+# local data (SEC filing text, database, vectors, models) - never commit
+backend/data/
+*.db
+*.joblib
+# secrets / local config
+.env
+.env.*
+!.env.example
+# local outputs
+diag.txt
+review.txt
+labels*.csv
+*.log
+.DS_Store

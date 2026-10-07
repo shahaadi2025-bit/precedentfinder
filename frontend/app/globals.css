@@ -1,0 +1,24 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+body { @apply bg-slate-50 text-slate-900; }
+.card { @apply bg-white rounded-lg border border-slate-200 p-4 shadow-sm; }
+.btn { @apply bg-slate-900 text-white rounded px-3 py-1.5 text-sm disabled:opacity-50; }
+.inp { @apply border border-slate-300 rounded px-2 py-1.5 text-sm bg-white; }
+.dark body { @apply bg-slate-950 text-slate-100; }
+.dark .card { @apply bg-slate-900 border-slate-700; }
+.dark .inp { @apply bg-slate-800 border-slate-600 text-slate-100; }
+.dark .btn { @apply bg-indigo-500; }
+@keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
+@keyframes flow { to { stroke-dashoffset: -40 } }
+@keyframes grow { from { transform: scaleY(0) } to { transform: scaleY(1) } }
+@keyframes pulseRing { 0% { transform: scale(.8); opacity: .8 } 100% { transform: scale(2.2); opacity: 0 } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(24px) } to { opacity: 1; transform: none } }
+@keyframes shimmer { to { background-position: 200% center } }
+.float { animation: float 6s ease-in-out infinite } .float2 { animation: float 8s ease-in-out infinite reverse }
+.flow { stroke-dasharray: 6 6; animation: flow 1.2s linear infinite }
+.bar { transform-origin: bottom; animation: grow 1.2s cubic-bezier(.2,.8,.2,1) both }
+.ring { transform-box: fill-box; transform-origin: center; animation: pulseRing 2.4s ease-out infinite }
+.reveal { opacity: 0; transform: translateY(24px); transition: all .8s cubic-bezier(.2,.8,.2,1) } .reveal.in { opacity: 1; transform: none }
+.grad-text { background: linear-gradient(90deg,#6366f1,#06b6d4,#a855f7,#6366f1); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 6s linear infinite }
+@media (prefers-reduced-motion: reduce) { *, .float, .float2, .flow, .bar, .ring, .grad-text { animation: none !important } .reveal { opacity: 1; transform: none } }
+
+@media print { header, button, .inp, details > summary, nav { display: none !important } .card { box-shadow: none; break-inside: avoid; border: 0 } body { background: #fff !important; color: #000 } }

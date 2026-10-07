@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: precedentfinder-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - { key: ENABLE_RAG, value: "false" }          # torch + embedding model exceed free-tier 512 MB RAM
+      - { key: CORS_ORIGINS, value: "https://YOUR-APP.vercel.app" }
+      - { key: SEC_USER_AGENT, value: "PrecedentFinder research you@example.com" }

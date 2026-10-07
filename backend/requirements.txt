@@ -1,0 +1,10 @@
+fastapi==0.115.*
+uvicorn[standard]==0.30.*
+requests
+beautifulsoup4
+lxml
+pandas
+numpy
+scikit-learn
+joblib
+pydantic>=2

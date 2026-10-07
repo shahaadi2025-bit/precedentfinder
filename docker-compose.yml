@@ -1,0 +1,16 @@
+# Untested convenience setup. Local-first: `docker compose up --build`, then `docker compose exec ollama ollama pull llama3.2:3b`
+services:
+  backend:
+    build: { context: ./backend, args: { INSTALL_RAG: "true" } }
+    environment:
+      ENABLE_RAG: "true"
+      OLLAMA_URL: http://ollama:11434
+      SEC_USER_AGENT: ${SEC_USER_AGENT:?set SEC_USER_AGENT, e.g. "PrecedentFinder Your Name you@email.com"}
+      CORS_ORIGINS: http://localhost:3000
+    volumes: ["pf-data:/data"]
+    ports: ["8000:8000"]
+  ollama:
+    image: ollama/ollama
+    volumes: ["ollama:/root/.ollama"]
+    ports: ["11434:11434"]
+volumes: { pf-data: {}, ollama: {} }

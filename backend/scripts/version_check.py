@@ -7,9 +7,10 @@ checks = {
  "v2  deal analyzer backend": ("app/analyze.py", "def run("),
  "v3  features pack (risk flags, football)": ("app/features.py", "def risk_flags"),
  "v4  features pack 2 (compare, watchlist)": ("app/features.py", "def watch_add"),
+ "v5  valuation + diagnostics + ops": ("app/valuation.py", "def monte_carlo"),
 }
 for name, (p, s) in checks.items():
     t = (b / p).read_text(encoding="utf-8") if (b / p).exists() else ""; print(("OK      " if s in t else "MISSING ") + name)
 for name, p in {"v3  landing page": "components/Landing.tsx", "v3  insights": "components/Insights.tsx", "v4  tools": "components/Tools.tsx"}.items():
     print(("OK      " if (f / p).exists() else "MISSING ") + name)
-print("\nLatest = everything OK and 'pytest tests' shows 39 passed.")
+print("\nLatest = everything OK and 'pytest tests' shows 44 passed.")

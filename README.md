@@ -3,7 +3,18 @@
 
 Extracts M&A precedent-transaction data from public SEC filings (EDGAR), lets you query the filings in natural language (local RAG), and estimates plausible deal premiums with a small ML model trained on the extracted data. Everything is free and local-first: no paid APIs, no signup.
 
-> **Status:** the extractor, cross-checker, ML code and API logic have unit tests that pass on real filing excerpts and synthetic data. The EDGAR fetch layer, Chroma/Ollama RAG path, Next.js frontend and deployments were written but **not run end-to-end by the author's tooling** (no network in the build sandbox). Run the checklist below before trusting any number.
+## Verification status (read this first)
+| Component | Evidence so far | Status |
+|---|---|---|
+| Regex extractor | unit tests on real filing excerpts; author ran it on 50 real DEFM14A filings (second run: 25 parsed / 19 unparsed / 6 SPACs skipped) | works on a subset; **per-field accuracy NOT yet measured** |
+| EDGAR search/fetch, SIC lookup | author's local ingest run completed against live EDGAR (after fixing encoding/regex bugs it exposed) | exercised live |
+| Deal math (EPS accretion, break-evens, collar) | hand-calculated unit tests | arithmetic verified; model is deliberately simplified |
+| ML premium model | tested on synthetic data only; **never trained on real extracted data** | unverified |
+| RAG (ChromaDB + Ollama) | unit tests for helper functions only | **never run end-to-end** |
+| Deal Analyzer SEC XBRL financials | unit-tested on synthetic JSON | **never run against live SEC** |
+| Frontend (Next.js) | never compiled or rendered | **unverified** |
+| Deployment (Render/Vercel) | not done | **not done** |
+Details and the record of what has actually been measured live in [VERIFICATION.md](VERIFICATION.md). Do not cite unverified rows as working.
 
 ## Deal Analyzer (new)
 Enter an acquirer and a target (US-listed; name or ticker) plus today's share prices, an optional premium, % cash, and synergy assumption. The backend:
@@ -21,6 +32,12 @@ Endpoints: `/stats/sectors`, `/stats/trend`, `/quality`, `/export/deals.csv`, `/
 
 ## Feature pack 2
 Compare saved analyses side by side, watchlist, acquirer history, premium distribution chart, straight-line trend projection (rough; needs 3+ years), deal search box, free share-price lookup (Stooq; manual entry as fallback), shareable `/dashboard?analysis=ID` links, Print/PDF button, and `scripts/refresh.py` (+ Windows Task Scheduler command) to pick up new proxies.
+
+## Feature pack 3
+Valuation: value-creation test (premium vs capitalized synergies, fees, payback), contribution vs ownership, relative P/E, debt capacity and optimal cash mix under a leverage cap, pro forma credit stats, exchange ratio, break-even acquirer price, fixed-ratio collar table, Monte Carlo EPS distribution, tornado sensitivity.
+ML honesty tools (`/ml/diagnostics`): model comparison vs baseline, permutation importance, interval-coverage check, learning curve, biggest misses; `/similar` nearest precedent deals.
+RAG: answers about extracted targets come straight from the table (no LLM), keyword re-rank over vector hits, answer cache.
+Ops: rate limiting, request-ID/timing headers, input validation, 24h on-disk SEC cache, `/health/deep`, company-name normalisation.
 
 ## Architecture
 ```

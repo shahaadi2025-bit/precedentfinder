@@ -1,6 +1,6 @@
 """Stage 2: chunk -> local embeddings -> Chroma -> Ollama, with numeric cross-check against the deals table and per-stage timing."""
 import re, time, requests
-from . import latency
+from . import latency, ragplus
 from .config import TEXTS, CHROMA_DIR, EMBED_MODEL, OLLAMA_URL, OLLAMA_MODEL
 from .db import rows
 _m = {}
@@ -75,9 +75,15 @@ def generate(prompt, temperature=0.2):
 
 def answer(question, k=5):
     t = {}; t0 = time.perf_counter()
+    routed = ragplus.route_question(question, rows("SELECT * FROM deals"))
+    if routed:
+        return {"answer": routed["answer"], "number_checks": [], "any_flagged": False, "sources": [{"target": x, "adsh": "", "excerpt": "structured table"} for x in routed["deals"]],
+                "timings_ms": {"total_ms": round((time.perf_counter() - t0) * 1000, 1)}, "routed": True}
+    hit = ragplus.cache_get(question)
+    if hit: return {**hit, "cached": True}
     q_emb = _model().encode([question]).tolist(); t["embed_ms"] = (time.perf_counter() - t0) * 1000
     t1 = time.perf_counter(); res = _col().query(query_embeddings=q_emb, n_results=k)
-    docs, metas = res["documents"][0], res["metadatas"][0]; t["retrieve_ms"] = (time.perf_counter() - t1) * 1000
+    docs, metas = ragplus.keyword_rerank(question, res["documents"][0], res["metadatas"][0]); t["retrieve_ms"] = (time.perf_counter() - t1) * 1000
     ctx = "\n\n".join(f"[{i+1}] ({m['target']}) {d}" for i, (d, m) in enumerate(zip(docs, metas)))
     prompt = ("Answer ONLY from the excerpts of SEC merger filings below. If they don't contain the answer, say so. "
               "Cite excerpt numbers like [1]. Quote figures exactly.\n\n" + ctx + f"\n\nQuestion: {question}\nAnswer:")
@@ -91,6 +97,7 @@ def answer(question, k=5):
     deals = [d for d in deals if d["target"] in names] or deals
     checks = crosscheck(ans, ctx, deals); t["crosscheck_ms"] = (time.perf_counter() - t3) * 1000
     t["total_ms"] = (time.perf_counter() - t0) * 1000; latency.log(question, t)
-    return {"answer": ans, "number_checks": checks, "any_flagged": any(c["flag"] for c in checks),
-            "sources": [{"target": m["target"], "adsh": m["adsh"], "excerpt": d[:300]} for d, m in zip(docs, metas)],
-            "timings_ms": {k_: round(v, 1) for k_, v in t.items()}}
+    out = {"answer": ans, "number_checks": checks, "any_flagged": any(c["flag"] for c in checks),
+           "sources": [{"target": m["target"], "adsh": m["adsh"], "excerpt": d[:300]} for d, m in zip(docs, metas)],
+           "timings_ms": {k_: round(v, 1) for k_, v in t.items()}}
+    ragplus.cache_put(question, out); return out

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { API, api } from "../lib";
+import Advanced from "./Advanced";
 
 const n = (v: any, d = 1) => (v === null || v === undefined ? "—" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d }));
 const tone = (v: number | null) => (v === null ? "" : v >= 0 ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800");
@@ -75,6 +76,7 @@ export default function DealAnalyzer() {
         <div className="border rounded p-2"><p className="font-medium">Synergy sensitivity (EPS %)</p>{res.sensitivity.map((x: any, i: number) => <p key={i}>${n(x.synergies_m, 0)}M → <span className={`px-1 rounded ${tone(x.eps_accretion_pct)}`}>{x.eps_accretion_pct === null ? "n/a" : `${n(x.eps_accretion_pct)}%`}</span></p>)}</div>
         <div className="border rounded p-2"><p className="font-medium">Premium football field</p>{res.football.map((x: any, i: number) => <div key={i} className="mb-1"><div className="flex justify-between text-xs"><span>{x.label}</span><span>{x.low === x.high ? `${x.low}%` : `${x.low}–${x.high}%`}</span></div>
           <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded relative"><div className="absolute h-2 bg-indigo-500 rounded" style={{ left: `${Math.min(x.low, 100)}%`, width: `${Math.max(1.5, Math.min(x.high, 100) - Math.min(x.low, 100))}%` }} /></div></div>)}</div></div>
+      {res.advanced && <Advanced adv={res.advanced} />}
       <div className="space-y-1">{res.risk_flags.map((r: any, i: number) => <p key={i} className={`text-xs rounded p-1.5 border ${r.level === "high" ? "bg-red-50 border-red-300 text-red-800" : r.level === "medium" ? "bg-amber-50 border-amber-300 text-amber-800" : "bg-slate-50 border-slate-200 text-slate-700"}`}><b>{r.level.toUpperCase()}</b> · {r.text}</p>)}</div>
       <div className="flex gap-2"><button className="btn" onClick={save}>💾 Save analysis</button><button className="btn" onClick={download}>⬇ Download report (.md)</button><button className="btn" onClick={() => window.print()}>🖨 Print / PDF</button></div>
       {shared && <p className="text-xs">Share link copied: <code>{shared}</code> (works for anyone using your running backend)</p>}

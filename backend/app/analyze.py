@@ -2,7 +2,7 @@
 and an optional RAG+LLM narrative whose numbers are cross-checked against the computed facts."""
 import datetime as dt
 import numpy as np
-from . import dealmath, edgar, features, ml, sec_facts
+from . import dealmath, edgar, features, ml, sec_facts, valuation
 from .config import ENABLE_RAG
 from .db import rows
 
@@ -101,7 +101,7 @@ def run(req, with_narrative=True):
         if not req.get(k) or req[k] <= 0: raise ValueError(f"{k} must be a positive number (current share price).")
     sic, _ = edgar.sic_for(t["cik"]); sector = edgar.sector_from_sic(sic)
     A = {"price": req["acquirer_price"], "shares_m": a["fin"]["shares_m"], "net_income_m": a["fin"]["net_income_m"], "cash_m": a["fin"].get("cash_m") or 0,
-         "debt_m": a["fin"].get("debt_m") or 0, "ebitda_m": a["fin"].get("ebitda_m")}
+         "debt_m": a["fin"].get("debt_m") or 0, "ebitda_m": a["fin"].get("ebitda_m"), "revenue_m": a["fin"].get("revenue_m")}
     T = {"price": req["target_price"], "shares_m": t["fin"]["shares_m"], "net_income_m": t["fin"]["net_income_m"], "revenue_m": t["fin"].get("revenue_m"),
          "ebitda_m": t["fin"].get("ebitda_m"), "cash_m": t["fin"].get("cash_m") or 0, "debt_m": t["fin"].get("debt_m") or 0}
     warns = []
@@ -130,6 +130,7 @@ def run(req, with_narrative=True):
          "assumptions": asm, "premium_view": pv, "base": base, "grid": grid, "warnings": warns, "disclaimer": DISCLAIMER,
          "breakeven_premium": features.breakeven_premium(A, T, asm["pct_cash"], syn0, **kw), "sensitivity": sens, "cash_on_hand_case": coh,
          "premium_percentile": features.percentile_rank(pv["base"], cvals), "risk_flags": features.risk_flags(base, T["net_income_m"], pv),
-         "football": features.football(pv, req.get("premium_pct"))}
+         "football": features.football(pv, req.get("premium_pct")),
+         "advanced": valuation.advanced(A, T, pv["base"], asm["pct_cash"], syn0, asm["tax_rate"], asm["cost_of_debt"])}
     r["narrative"] = narrative(r) if with_narrative else None
     return r

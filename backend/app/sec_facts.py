@@ -1,7 +1,7 @@
 """Company lookup + latest-annual financials from SEC EDGAR XBRL (free). Figures are as-reported; tags vary by filer."""
 import json, difflib, re
 from datetime import date
-from . import edgar
+from . import edgar, ops
 from .config import DATA
 
 TICKERS = DATA / "company_tickers.json"
@@ -89,5 +89,6 @@ def parse_financials(companyfacts):
             "eps_diluted": out.get("eps_diluted"), "shares_m": m(out.get("shares")), "sources": src}
 
 def financials(cik):
-    cf = edgar._get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json").json()
+    url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json"
+    cf = ops.cached_json(url, 24 * 3600, lambda: edgar._get(url).json())     # 24h on-disk cache: fewer SEC requests
     return parse_financials(cf)

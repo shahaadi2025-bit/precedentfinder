@@ -310,3 +310,67 @@ def test_watchlist_roundtrip(tmp_path, monkeypatch):
     features.watch_add("msft", "target?"); features.watch_add("MSFT", "updated")
     w = features.watch_list(); assert len(w) == 1 and w[0]["ticker"] == "MSFT" and w[0]["note"] == "updated"
     features.watch_del(w[0]["id"]); assert features.watch_list() == []
+
+# ---- pack 3: valuation / mlplus / ops / ragplus ----
+def test_valuation_hand_calculated():
+    from app import valuation as v
+    assert abs(v.premium_paid_m(TGT, 30) - 300.0) < 1e-9
+    assert abs(v.synergy_value_m(100, 0.25) - 75 / 0.07) < 1e-9 and v.synergy_value_m(100, 0.25, 0.02, 0.02) is None
+    vc = v.value_creation(ACQ, TGT, 30, 100, 0.25)
+    assert abs(vc["net_value_created_m"] - (75 / 0.07 - 300 - 1300 * 0.015)) < 1e-9 and abs(vc["payback_years"] - 4.0) < 1e-9
+    assert abs(v.exchange_ratio(26.0, 50.0, 0.0) - 0.52) < 1e-9 and abs(v.exchange_ratio(26.0, 50.0, 0.5) - 0.26) < 1e-9
+    assert v.breakeven_acquirer_price(ACQ, TGT, 30, 0.0, 0.0, 0.25, 0.06) is not None
+    assert abs(v.breakeven_acquirer_price(ACQ, TGT, 30, 0.0, 0.0, 0.25, 0.06) - 162.5) < 0.05
+    assert v.breakeven_acquirer_price(ACQ, TGT, 30, 1.0, 0.0, 0.25, 0.06) is None
+
+def test_valuation_collar_leverage_mc_tornado():
+    from app import valuation as v
+    c = v.collar_table(ACQ, TGT, 30, 0.5); mid = next(x for x in c if x["acq_price_move_pct"] == 0)
+    assert abs(mid["value_per_target_share"] - 26.0) < 1e-9 and abs(mid["effective_premium_pct"] - 30.0) < 0.05 and c[0]["value_per_target_share"] < 26.0
+    lc = v.max_cash_at_leverage(ACQ, TGT, 30, 0.0, cap=3.5)
+    assert abs(lc["capacity_m"] - (3.5 * 980 - (60 - 120))) < 1e-9 and lc["max_pct_cash"] == 1.0
+    om = v.optimal_mix(ACQ, TGT, 30, 100.0, 0.25, 0.06, cap=3.5); assert om and 0 <= om["pct_cash"] <= 1 and om["pf_net_debt_ebitda"] <= 3.5
+    mc = v.monte_carlo(ACQ, TGT, 30, 50.0, 0.5, 0.25, 0.06, n=300, seed=1)
+    assert mc["p5"] <= mc["p50"] <= mc["p95"] and 0 <= mc["prob_accretive_pct"] <= 100 and sum(h["n"] for h in mc["hist"]) == mc["n"]
+    assert v.monte_carlo(ACQ, TGT, 30, 50.0, 0.5, 0.25, 0.06, n=300, seed=1) == mc          # reproducible
+    tn = v.tornado(ACQ, TGT, 30, 0.5, 50.0, 0.25, 0.06); assert [r["swing"] for r in tn] == sorted([r["swing"] for r in tn], reverse=True) and len(tn) == 5
+    adv = v.advanced(ACQ, TGT, 30, 0.5, 20.0, 0.25, 0.06)
+    assert {"value_creation", "contribution", "monte_carlo", "tornado", "collar", "credit", "leverage_cap"} <= set(adv)
+    assert adv["contribution"]["rows"][2]["target_pct"] == round(40 / 540 * 100, 1)
+
+def test_mlplus_on_synthetic(monkeypatch):
+    import numpy as np, pandas as pd
+    from app import ml, mlplus
+    rng = np.random.default_rng(0); n = 80
+    df = pd.DataFrame({"target": [f"T{i}" for i in range(n)], "sector": rng.choice(["Technology", "Healthcare", "Financials"], n), "year": rng.integers(2021, 2026, n), "deal_value_musd": rng.uniform(50, 8000, n)})
+    df["premium"] = 20 + 10 * (df["sector"] == "Technology") + rng.normal(0, 3, n); df["value_bucket"] = df["deal_value_musd"].map(ml.bucket)
+    cmp_ = mlplus.model_compare(df); assert {r["model"] for r in cmp_} == {"mean baseline", "ridge", "random forest", "gradient boosting"} and any(r["beats_baseline"] for r in cmp_)
+    assert list(mlplus.permutation_report(df))[0] == "sector"                 # sector is the real signal in this synthetic set
+    assert 0 <= mlplus.interval_coverage(df)["coverage_pct"] <= 100 and len(mlplus.learning_curve(df)) == 4 and len(mlplus.worst_misses(df)) == 5
+    assert mlplus.diagnostics(df.head(5))["available"] is False
+    rows_ = [{"sector": "A", "ann_date": "2021-01-01", "premium": 10.0}, {"sector": "B", "ann_date": "2025-01-01", "premium": 20.0}, {"sector": "B", "ann_date": "2022-01-01", "premium": 30.0}]
+    assert mlplus.similar_deals(rows_, "B", 2025, 2)[0]["premium"] == 20.0
+
+def test_ops_ratelimit_cache_validate_normalize(tmp_path):
+    from app import ops
+    rl = ops.RateLimiter(capacity=2, per_sec=1.0)
+    assert rl.allow("a", 0.0) and rl.allow("a", 0.0) and not rl.allow("a", 0.0) and rl.allow("a", 1.1) and rl.allow("b", 0.0)
+    calls = []; fetch = lambda: calls.append(1) or {"x": 1}
+    assert ops.cached_json("k", 100, fetch, base=tmp_path, now=1000.0) == {"x": 1}
+    import os; f = next(tmp_path.iterdir()); os.utime(f, (1000.0, 1000.0))
+    ops.cached_json("k", 100, fetch, base=tmp_path, now=1050.0); assert len(calls) == 1
+    ops.cached_json("k", 100, fetch, base=tmp_path, now=1200.0); assert len(calls) == 2
+    assert ops.validate_analyze({"acquirer": "A", "target": "B", "acquirer_price": 10, "target_price": 5, "pct_cash": 50}) == []
+    errs = ops.validate_analyze({"acquirer": "A", "target": "a", "acquirer_price": 0, "target_price": 5, "pct_cash": 150, "tax_rate": 90})
+    assert len(errs) == 4
+    assert ops.normalize_company("Microsoft Corporation") == "microsoft" and ops.normalize_company("The Doctors Company, Inc.") == "doctors"
+
+def test_ragplus_routing_rerank_cache():
+    from app import ragplus
+    deals = [{"target": "ODP Corp", "premium": 34.5, "premium_ref": "spot_close", "acquirer": "ACR Ocean Resources LLC", "ann_date": "2025-09-22", "confidence": "high"}]
+    r = ragplus.route_question("What premium did ODP stockholders get and who is the acquirer?", deals)
+    assert r and "34.5%" in r["answer"] and "ACR Ocean Resources LLC" in r["answer"] and "not generated by the LLM" in r["answer"]
+    assert ragplus.route_question("How do mergers work in general?", deals) is None and ragplus.route_question("Tell me about ODP's board", deals) is None
+    docs = ["unrelated boilerplate about voting procedures", "the merger premium was 34.5 percent over closing price", "premium premium premium"]
+    out, _ = ragplus.keyword_rerank("merger premium closing price", docs, [{}, {}, {}], alpha=0.9); assert out[0] == docs[1]
+    ragplus.cache_put("What is X?", {"a": 1}, now=100.0); assert ragplus.cache_get("what is x", ttl=60, now=130.0) == {"a": 1} and ragplus.cache_get("what is x", ttl=60, now=200.0) is None

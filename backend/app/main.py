@@ -2,10 +2,18 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Body
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from . import analyze, features, latency, ml, sec_facts
+from . import analyze, features, latency, ml, mlplus, ops, sec_facts
+from fastapi import Request
 from .config import CORS_ORIGINS, ENABLE_RAG
 from .db import rows
 app = FastAPI(title="PrecedentFinder")
+LIMITER = ops.RateLimiter(capacity=12, per_sec=0.4)
+def _limit(request: Request):
+    if not LIMITER.allow(request.client.host if request.client else "local"): raise HTTPException(429, "Too many requests; wait a few seconds.")
+@app.middleware("http")
+async def timing(request: Request, call_next):
+    import time, uuid; t0 = time.perf_counter(); resp = await call_next(request)
+    resp.headers["X-Request-ID"] = uuid.uuid4().hex[:12]; resp.headers["X-Process-Ms"] = f"{(time.perf_counter() - t0) * 1000:.1f}"; return resp
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/health")
@@ -28,7 +36,8 @@ def unparsed(): return rows("SELECT * FROM unparsed")
 
 class Q(BaseModel): question: str; k: int = 5
 @app.post("/query")
-def query(q: Q):
+def query(q: Q, request: Request):
+    _limit(request)
     if not ENABLE_RAG: raise HTTPException(503, "RAG disabled on this host (RAM limits). Run the backend locally with Ollama.")
     from . import rag
     try: return rag.answer(q.question, q.k)
@@ -57,7 +66,10 @@ class AnalyzeReq(BaseModel):
     tax_rate: float = 25.0; cost_of_debt: float = 6.0; narrative: bool = True
 
 @app.post("/analyze")
-def analyze_deal(req: AnalyzeReq):
+def analyze_deal(req: AnalyzeReq, request: Request):
+    _limit(request)
+    errs = ops.validate_analyze(req.model_dump())
+    if errs: raise HTTPException(422, "; ".join(errs))
     try: return analyze.run(req.model_dump(), with_narrative=req.narrative)
     except ValueError as e: raise HTTPException(422, str(e))
     except Exception as e: raise HTTPException(502, f"Analysis failed ({type(e).__name__}): {e}")
@@ -112,3 +124,11 @@ def price(ticker: str):
     try: return features.price(ticker)
     except ValueError as e: raise HTTPException(404, str(e))
     except Exception as e: raise HTTPException(502, f"Price lookup failed ({type(e).__name__}); enter the price manually.")
+
+@app.get("/health/deep")
+def health_deep(): return ops.deep_health()
+@app.get("/ml/diagnostics")
+def ml_diagnostics(): return mlplus.diagnostics(ml.frame())
+@app.get("/similar")
+def similar(sector: str, year: int, k: int = 5):
+    return mlplus.similar_deals(rows("SELECT target, acquirer, ann_date, sector, premium, premium_ref FROM deals WHERE premium IS NOT NULL"), sector, year, k)
